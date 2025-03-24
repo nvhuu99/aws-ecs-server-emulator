@@ -19,12 +19,20 @@
 
 ## **Project Setup**
 
-### **1. Configure Environment**
+### 1. Prerequisites:
+
+Please install the following tools, and make sure you have a AWS Account
+
+* Docker
+* AWS CLI
+* AWS CDK CLI
+
+### **2. Configure Environment**
 Open the `.env` file and fill in the required values, including your **AWS Account ID** and **AWS Region**.
 
 ---
 
-### **2. Build and Push Docker Images to Amazon ECR**
+### **3. Build and Push Docker Images to Amazon ECR**
 
 #### **Login to AWS ECR**
 ```sh
@@ -59,7 +67,7 @@ docker push <aws-account-id>.dkr.ecr.<aws-region>.amazonaws.com/web-server-emula
 
 ---
 
-### **3. Deploy Using AWS CDK**
+### **4. Deploy Using AWS CDK**
 ```sh
 go mod tidy
 
@@ -72,7 +80,7 @@ cdk deploy ScalingExperimentEmulatorsCluster
 
 ---
 
-### **4. Verify Deployment**
+### **5. Verify Deployment**
 1. Log in to the **AWS Management Console** and check if the following resources were created:
    - **Stack, ECS Cluster, VPC, Task Definitions, Services, and Load Balancer**.
 2. Verify that **two EC2 instances** were created:
@@ -92,7 +100,7 @@ cdk deploy ScalingExperimentEmulatorsCluster
 
 ---
 
-### **5. Test Auto Scaling**
+### **6. Test Auto Scaling**
 To simulate peak demand, run the following script in your browser's console:
 ```js
 var interval = setInterval(() => fetch("<your lb dns here>"), 2000);
@@ -105,12 +113,14 @@ After inspecting the scaling behavior, stop the simulation by running:
 ```js
 clearInterval(interval);
 ```
-## 6. Cleanup
+### 7. Cleanup
 
 Clean AWS Resources:
 
-> cdk destroy ScalingExperimentEmulatorsCluster
-> cdk destroy ScalingExperimentVpc
+```
+cdk destroy ScalingExperimentEmulatorsCluster
+cdk destroy ScalingExperimentVpc
+```
 
 The process should finish after 30 minutes to 1 hour, otherwise, there might be difficuties happened. In this case, you must try to delete the resources manually with the AWS Management Console.
 * Go to AWS CloudFormation > Stacks. Here, you can clearly see which resources deletion process is idling with DELETE_IN_PROGRESS status. 
