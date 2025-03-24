@@ -1,0 +1,10 @@
+{
+  "availability-zones:account=892464009377:region=ap-northeast-1": [
+    "ap-northeast-1a",
+    "ap-northeast-1c",
+    "ap-northeast-1d"
+  ],
+  "acknowledged-issue-numbers": [
+    32775
+  ]
+}
