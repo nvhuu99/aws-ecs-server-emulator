@@ -5,19 +5,16 @@ FROM golang:1.20 AS builder
 WORKDIR /app
 
 # Copy the Go source code
-COPY web-server-emulator.go .
+COPY src/ .
 
 # Build a statically linked binary to work in Alpine
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o web-server-emulator web-server-emulator.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/task-emulator task-emulator/task-emulator.go
 
 # Use a minimal base image for the final container
 FROM alpine:latest
 
 # Copy the static binary from the builder stage
-COPY --from=builder /app/web-server-emulator /web-server-emulator
+COPY --from=builder /app/bin/task-emulator /task-emulator
 
 # Ensure the binary is executable
-RUN chmod +x /web-server-emulator
-
-# Run the program
-# CMD ["/web-server-emulator"]
+RUN chmod +x /task-emulator

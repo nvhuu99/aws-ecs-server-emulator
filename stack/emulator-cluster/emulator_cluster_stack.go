@@ -45,6 +45,7 @@ func NewEmulatorClusterStack(scope constructs.Construct, id string, props *Emula
 	stack.declareSecurityGroups()
 	stack.declareCluster()
 	stack.declareWebServerEmulator()
+	stack.declareTaskEmulator()
 
 	return stack
 }
@@ -67,6 +68,48 @@ func (scope *EmulatorStack) declareSecurityGroups() {
 		Description: jsii.String("Security group for standalone task. No inbound."),
 	})
 	scope.SecurityGroups[TaskSG] = taskSG
+}
+
+func (scope *EmulatorStack) declareCluster() {
+	cluster := ecs.NewCluster(scope.Stack, jsii.String("Cluster"), &ecs.ClusterProps{
+		Vpc: scope.Props.Vpc,
+		EnableFargateCapacityProviders: jsii.Bool(true),
+	})
+	// Web server emulator capacity provider
+	webAsg := scaling.NewAutoScalingGroup(scope.Stack, jsii.String("WebAsg"), &scaling.AutoScalingGroupProps{
+		Vpc: scope.Props.Vpc,
+		InstanceType: ec2.NewInstanceType(jsii.String("t2.micro")), 
+		MachineImage: ecs.EcsOptimizedImage_AmazonLinux2(ecs.AmiHardwareType_STANDARD, nil),
+		MinCapacity: jsii.Number(1),
+		MaxCapacity: jsii.Number(3),
+		KeyPair: ec2.KeyPair_FromKeyPairName(scope.Stack, jsii.String("WebAsgKeyPair"), jsii.String("aws-huunv-general-purpose")),
+		InstanceMonitoring: scaling.Monitoring_DETAILED,
+	})
+	webProvider := ecs.NewAsgCapacityProvider(scope.Stack, jsii.String("WebCapacityProvider"), &ecs.AsgCapacityProviderProps{
+		AutoScalingGroup: webAsg,
+		InstanceWarmupPeriod: jsii.Number(300),
+		TargetCapacityPercent: jsii.Number(50),
+	})
+	cluster.AddAsgCapacityProvider(webProvider, nil)
+	// Standalone task emulator capacity provider
+	// taskAsg := scaling.NewAutoScalingGroup(scope.Stack, jsii.String("TaskEmulator"), &scaling.AutoScalingGroupProps{
+	// 	Vpc: scope.Props.Vpc,
+	// 	InstanceType: ec2.NewInstanceType(jsii.String("t2.small")), 
+	// 	MachineImage: ecs.EcsOptimizedImage_AmazonLinux2(ecs.AmiHardwareType_STANDARD, nil),
+	// 	MinCapacity: jsii.Number(1),
+	// 	MaxCapacity: jsii.Number(2),
+	// 	KeyPair: ec2.KeyPair_FromKeyPairName(scope.Stack, jsii.String("AsgKeyPair"), jsii.String("aws-huunv-general-purpose")),
+	// 	InstanceMonitoring: scaling.Monitoring_DETAILED,
+	// })
+	// taskProvider := ecs.NewAsgCapacityProvider(scope.Stack, jsii.String("TaskEmulatorCapacityProvider"), &ecs.AsgCapacityProviderProps{
+	// 	AutoScalingGroup: taskAsg,
+	// 	InstanceWarmupPeriod: jsii.Number(300),
+	// })
+	// cluster.AddAsgCapacityProvider(taskProvider, nil)
+	
+	scope.CapacityProviders[WebProvider] = webProvider
+	// scope.CapacityProviders[TaskEmulatorProvider] = taskProvider
+	scope.Cluster = cluster
 }
 
 func (scope *EmulatorStack) declareWebServerEmulator() {
@@ -153,44 +196,35 @@ func (scope *EmulatorStack) declareWebServerEmulator() {
 	})
 }
 
-func (scope *EmulatorStack) declareCluster() {
-	cluster := ecs.NewCluster(scope.Stack, jsii.String("Cluster"), &ecs.ClusterProps{
-		Vpc: scope.Props.Vpc,
-		EnableFargateCapacityProviders: jsii.Bool(true),
+func (scope *EmulatorStack) declareTaskEmulator() {
+	// task definition
+	taskDefinition := ecs.NewTaskDefinition(scope.Stack, jsii.String("TaskEmulatorDefinition"), &ecs.TaskDefinitionProps{
+		Cpu: jsii.String("0.5 vCPU"),
+		MemoryMiB: jsii.String("1 GB"),
+		Compatibility: ecs.Compatibility_FARGATE,
+		NetworkMode: ecs.NetworkMode_AWS_VPC,
 	})
-	// Web server emulator capacity provider
-	webAsg := scaling.NewAutoScalingGroup(scope.Stack, jsii.String("WebAsg"), &scaling.AutoScalingGroupProps{
-		Vpc: scope.Props.Vpc,
-		InstanceType: ec2.NewInstanceType(jsii.String("t2.micro")), 
-		MachineImage: ecs.EcsOptimizedImage_AmazonLinux2(ecs.AmiHardwareType_STANDARD, nil),
-		MinCapacity: jsii.Number(1),
-		MaxCapacity: jsii.Number(3),
-		KeyPair: ec2.KeyPair_FromKeyPairName(scope.Stack, jsii.String("WebAsgKeyPair"), jsii.String("aws-huunv-general-purpose")),
-		InstanceMonitoring: scaling.Monitoring_DETAILED,
+	// container
+	repo := ecr.Repository_FromRepositoryName(scope.Stack, jsii.String("TaskRepo"), jsii.String("task-emulator"))
+	taskDefinition.AddContainer(jsii.String("TaskContainer"), &ecs.ContainerDefinitionOptions{
+		Image: ecs.ContainerImage_FromEcrRepository(repo, nil),
+		Cpu: jsii.Number(512),
+		MemoryLimitMiB: jsii.Number(512), // hard limit
+		MemoryReservationMiB: jsii.Number(256), // soft limit
+		Essential: jsii.Bool(true),
+		Command: &[]*string{
+			jsii.String("/task-emulator"),
+			jsii.String("--cpu"),
+			jsii.String("80"),
+			jsii.String("--mem"),
+			jsii.String("1"),
+			jsii.String("--runtime"),
+			jsii.String("15"),
+		},
+		Logging: ecs.AwsLogDriver_AwsLogs(&ecs.AwsLogDriverProps{
+			StreamPrefix: jsii.String("ecs"),
+			Mode: ecs.AwsLogDriverMode_NON_BLOCKING,
+			MaxBufferSize: cdk.Size_Bytes(jsii.Number(25 * 1024 * 1024)), // 25mb
+		}),
 	})
-	webProvider := ecs.NewAsgCapacityProvider(scope.Stack, jsii.String("WebCapacityProvider"), &ecs.AsgCapacityProviderProps{
-		AutoScalingGroup: webAsg,
-		InstanceWarmupPeriod: jsii.Number(300),
-		TargetCapacityPercent: jsii.Number(50),
-	})
-	cluster.AddAsgCapacityProvider(webProvider, nil)
-	// Standalone task emulator capacity provider
-	// taskAsg := scaling.NewAutoScalingGroup(scope.Stack, jsii.String("TaskEmulator"), &scaling.AutoScalingGroupProps{
-	// 	Vpc: scope.Props.Vpc,
-	// 	InstanceType: ec2.NewInstanceType(jsii.String("t2.small")), 
-	// 	MachineImage: ecs.EcsOptimizedImage_AmazonLinux2(ecs.AmiHardwareType_STANDARD, nil),
-	// 	MinCapacity: jsii.Number(1),
-	// 	MaxCapacity: jsii.Number(2),
-	// 	KeyPair: ec2.KeyPair_FromKeyPairName(scope.Stack, jsii.String("AsgKeyPair"), jsii.String("aws-huunv-general-purpose")),
-	// 	InstanceMonitoring: scaling.Monitoring_DETAILED,
-	// })
-	// taskProvider := ecs.NewAsgCapacityProvider(scope.Stack, jsii.String("TaskEmulatorCapacityProvider"), &ecs.AsgCapacityProviderProps{
-	// 	AutoScalingGroup: taskAsg,
-	// 	InstanceWarmupPeriod: jsii.Number(300),
-	// })
-	// cluster.AddAsgCapacityProvider(taskProvider, nil)
-	
-	scope.CapacityProviders[WebProvider] = webProvider
-	// scope.CapacityProviders[TaskEmulatorProvider] = taskProvider
-	scope.Cluster = cluster
 }
